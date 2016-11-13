@@ -7,7 +7,10 @@ Pre-processing
     - if it was non-Latin, removed Latin (usually English) words
         - or replaced individual letters with the Cyrillic/Greek equiv.
         - Welsh is still fucked up -- something about the dipthongs
-
+3. Removed the non-Latin corpora -- there were too many unique characters
+    - created normalize.py
+    - > for file in Corpora/*; do python normalize.py $(basename "$file"); done
+    
 
 TODO
 ----
