@@ -1,0 +1,18 @@
+Pre-processing
+
+1. scraped everything and saved it to lang.txt
+2. went through each one
+    - each word on its own line
+    - removed any obvious punctuation, numbers, etc.
+    - if it was non-Latin, removed Latin (usually English) words
+        - or replaced individual letters with the Cyrillic/Greek equiv.
+        - Welsh is still fucked up -- something about the dipthongs
+
+
+TODO
+----
+- Sutskever, I., Martens, J., and Hinton, G. E. (2011). Generating text with recurrent neural networks. In ICML’2011 , pages 1017–1024.
+
+- Gillick, D., Brunk, C., Vinyals, O., and Subramanya, A. (2015). Multilingual language processing from bytes. arXiv preprint arXiv:1512.00103.
+
+- Bengio, Y., Ducharme, R., and Vincent, P. (2001). A neural probabilistic language model. In T. K. Leen, T. G. Dietterich, and V. Tresp, editors, NIPS’2000 , pages 932–938. MIT Press.

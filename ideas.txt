@@ -1,0 +1,32 @@
+* What language is a word/sentence in?
+    - samples?
+    - http://www.uow.edu.au/~dlee/corpora2.htm
+    - it looks like a lot of work to consolidate this data
+    - the interesting thing would be minimizing the number of hidden nodes
+
+* Number of dots in an image. Could this be log-order to simplify?
+    - is there a way to use Matlab to easily generate these images?
+    - what about easily counting the dots in MATLAB?
+    - slight overlaps?
+    - ConvNet?
+    - difference btw number and total coverage
+
+* Predict tomorrow's weather, based on today's current conditions.
+    - where to get datasets? http://www.ncdc.noaa.gov/cdo-web/datasets
+
+* Very small neural nets to calculate very simple, but -- importantly -- non-linear, functions on very small inputs.
+    - e.g.: Union all, Intersect all, reverse the order of input, number "on," sum, average, highest, lowest, etc.
+    - the point of this would be to examine the structures (formulae) created by the trained NN i.r.t. linear but mostly non-linear and logical operators. Also, try to reduce the number of hidden nodes.
+
+* Correct moves to solve Tower of Hanoi.
+    - how to handle illegal moves? Maybe it doesn't matter?
+    - how to handle finishing
+
+* Legal chess move, given the board. White to move.
+    - http://archive.ics.uci.edu/ml/datasets/Chess+%28King-Rook+vs.+King%29
+
+* Some other dataset
+
+* Count the number of colors in an image
+    - only interesting if the structure of the image is taken into account, e.g. shading over an object, cast shadows
+
