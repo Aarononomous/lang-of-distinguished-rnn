@@ -10,7 +10,12 @@ Pre-processing
 3. Removed the non-Latin corpora -- there were too many unique characters
     - created normalize.py
     - > for file in Corpora/*; do python normalize.py $(basename "$file"); done
-    
+
+First Run-Through
+
+1. Added helper functions
+2. 
+
 
 TODO
 ----

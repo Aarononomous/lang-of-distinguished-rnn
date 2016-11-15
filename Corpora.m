@@ -1,6 +1,6 @@
 classdef Corpora
     properties
-        corpus = {};
+        corpus = cell(2,1);
         languages = {};
         allChars = [];
     end
@@ -33,7 +33,8 @@ classdef Corpora
                         % add chars in word to charsUsed
                         charsUsed = strcat(charsUsed, tline);
                         % add [word, lang] to corpus
-                        obj.corpus{c_i} = {tline, l_i};
+                        obj.corpus{1, c_i} = tline;
+                        obj.corpus{2, c_i} = l_i;
                         tline = fgetl(fid);
                         c_i = c_i + 1;
                     end
@@ -60,15 +61,15 @@ classdef Corpora
         
         function encoding = encodeString(obj, s)
             %%% encodes a string (i.e., char vector) s = c_1 c_2 ... into
-            %%% {n_1 n_2 n_3 ...} where n_i is the index of c in allChars
+            %%% [n_1; n_2; n_3; ...] where n_i is the index of c in allChars
             %%% if c is not in allChars, use 0
-            encoding = cell(size(s, 2), 1);
+            encoding = zeros(size(s, 2), 1);
             for i = 1 : size(s, 2)
                 pos = find(obj.allChars==s(i));
                 if (pos)
-                    encoding{i} = pos;
+                    encoding(i) = pos;
                 else
-                    encoding{i} = 0;
+                    encoding(i) = 0;
                 end
             end
         end
