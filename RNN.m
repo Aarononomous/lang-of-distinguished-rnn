@@ -13,13 +13,15 @@ classdef RNN < handle
         b; % biases for hidden layer
         V; % weights from hidden layer to output
         c; % biases for output layer
+        max_backprop_depth = 1;
+        max_clip = 10000;
         isLearning = false;
-        activation_function = @RNN.ReLU;
-        activation_function_prime = @RNN.ReLU_prime;
-        cost_function = @RNN.cross_entropy;
-        cost_function_prime = @RNN.cross_entropy_prime;
-        regularization_function = @RNN.L2;
-        regularization_function_prime = @RNN.L2_prime;
+        activation_function = @RNN.softmax;
+        activation_function_prime = @RNN.softmax_prime;
+        cost_function = @RNN.log_likelihood;
+        cost_function_prime = @RNN.log_likelihood_prime;
+        regularization_function = @RNN.none;
+        regularization_function_prime = @RNN.none;
         regularization_factor = 0.05;
         training_stats = [];
         % momentum = 0.0;
@@ -92,6 +94,7 @@ classdef RNN < handle
         % softmax
         function out = softmax(t, isLast)
             if isLast
+                t = t / max(abs(t)); % "normalize" to a "unit vector" so that we don't blow out to NaN
                 out = exp(t) ./ sum(exp(t));
             else
                 out = RNN.sigmoid(t, false);
@@ -121,8 +124,7 @@ classdef RNN < handle
                 error('The cost function needs equal-sized arrays.\n');
             end
             
-            lengths = sqrt(sum((target - actual) .^ 2));
-            out = sum(lengths .^ 2) / (2 * size(target, 2));
+            out = sum(sum((target - actual) .^ 2)) / (2 * numel(target));
         end
         
         function out = MSE_prime(target, actual, z, afp)
@@ -135,16 +137,16 @@ classdef RNN < handle
         
         % Cross-entropy
         function out = cross_entropy(target, actual)
-%                 target
-%               actual
+            %                 target
+            %               actual
             if (size(target) ~= size(actual))
                 error('The cost function needs equal-sized arrays.\n');
             end
             
-%             costRets = - ((sum(sum(((targets.*log(activations)) + ...
-%                         (1-targets).*log(1-activations)),2))) ...
-%               / setSize) + (lambda*sumSqWts/(2*numInstances));
-
+            %             costRets = - ((sum(sum(((targets.*log(activations)) + ...
+            %                         (1-targets).*log(1-activations)),2))) ...
+            %               / setSize) + (lambda*sumSqWts/(2*numInstances));
+            
             out = -sum(sum(target .* log(actual) + (1 - target) .* log(1 - actual))) / size(target, 2);
         end
         
@@ -174,6 +176,16 @@ classdef RNN < handle
             out = actual - target;
         end
         
+        function out = cosine_similarity(target, actual)
+            % Compute the cosine similarity between minibatch examples and all embeddings.
+            % cos 0 = 1 = totally similar; cos π/2 = 0 = totally opposite
+            % this is computed via (A . B) / ||A||*||B||
+            % it's a good way to make comparisons in high-dimensional space
+
+            norm = sqrt(sum(target .^ 2)) * sqrt(sum(actual .^ 2));
+            out = target' * actual / norm;
+        end
+
         %% Regularization functions
         %% The regularization functions are applied to all the weights in the net,
         %% the gradients are applied to individual weights (one layer at a time)
@@ -187,30 +199,25 @@ classdef RNN < handle
         % divide by n later
         function out = L1(lambda, weights)
             sum_weights = sum(cell2mat(cellfun(@(x) sum(sum(x)), weights, 'UniformOutput', false)));
-            out = (lambda / 2) * sum_weights;
+            out = (lambda / 2 * numel(weights)) * sum_weights;
         end
         
         % L1' = lambda/2n
         % divide by n later
         function out = L1_prime(lambda, weights)
-            out = lambda / 2;
+            out = (lambda / numel(weights));
         end
         
         %% L2 regularization = lambda/2n * Sum (w^2)
-        % divide by n later
         function out = L2(lambda, weights)
             % sum_squares = sum(cell2mat(cellfun(@(x) sum(sum(x .^ 2)), weights, 'UniformOutput', false)))
-            sum_squares = 0;
-            for l = 1 : size(weights, 1)
-                sum_squares = sum_squares + sum(sum(weights{l} .^ 2));
-            end
-            out = (lambda / 2) * sum_squares;
+            sum_squares = sum(sum(weights .^ 2));
+            out = (lambda / 2 * numel(weights)) * sum_squares;
         end
         
         %% L2' = lambda/n * w
-        % divide by n later
         function out = L2_prime(lambda, weights)
-            out = lambda * weights;
+            out = (lambda / numel(weights)) * weights;
         end
     end
     
@@ -225,7 +232,7 @@ classdef RNN < handle
                 obj.V = V;
             end
         end
-                
+        
         function initialize_weights(obj, hidden_layer_size)
             if (isempty(obj.corpus))
                 error('Can''t initialize weights without corpus specified.');
@@ -238,7 +245,7 @@ classdef RNN < handle
             obj.W = randn(hidden_layer_size, hidden_layer_size) / sqrt(variance);
             
             % initialize U, weights from inputs to hidden layers
-            obj.U = randn(hidden_layer_size, variance) / sqrt(variance);
+            obj.U = randn(hidden_layer_size, size(obj.corpus.allChars, 2)) / sqrt(variance);
             
             % initialize b, biases for hidden layer
             obj.b = randn(hidden_layer_size, 1) / sqrt(variance);
@@ -257,16 +264,16 @@ classdef RNN < handle
             h = zeros(size(obj.W, 2), 1);
             chars = size(obj.corpus.allChars, 2);
             
-            words  = obj.corpus.encodeString(input{:, 1})';
-            x = RNN.one_hot(chars, words);
-            tau = size(words, 2);
+            word = obj.corpus.encodeString(input{:, 1})';
+            x = RNN.one_hot(chars, word);
+            tau = size(word, 2);
             
             a = obj.U * x(:, 1) + obj.W * zeros(size(obj.W, 2), 1) + obj.b; % h{0} = 0
-            h = obj.activation_function(a);
-
+            h = obj.activation_function(a, false);
+            
             for t = 2 : tau
                 a = obj.U * x(:, t) + obj.W * h + obj.b;
-                h = obj.activation_function(a);
+                h = obj.activation_function(a, false);
             end
             
             o = obj.V * h + obj.c;
@@ -279,10 +286,10 @@ classdef RNN < handle
             langs = size(obj.corpus.languages, 2);
             epoch = 1;
             obj.isLearning = true; % loop termination test
-
+            
             % Initialize training, test, and validation sets
             shuffled_corpus = RNN.shuffle(obj.corpus.corpus);
-            shuffled_corpus = shuffled_corpus(:, 1 : 50);
+            %             shuffled_corpus = shuffled_corpus(:, 1 : 5000);
             [training_data, test_data, validation_data] = RNN.split_input(shuffled_corpus, 0.9, 0.05, 0.05);
             training_input = training_data(1, :);
             training_output = RNN.one_hot(langs, cell2mat(training_data(2, :)));
@@ -290,7 +297,7 @@ classdef RNN < handle
             test_output = RNN.one_hot(langs, cell2mat(test_data(2, :)));
             validation_input = validation_data(1, :);
             validation_output = RNN.one_hot(langs, cell2mat(validation_data(2, :)));
-                        
+            
             % print output header
             fprintf(RNN.report_header);
             
@@ -322,16 +329,20 @@ classdef RNN < handle
                     delta = cell(tau, 1);
                     
                     a{1} = obj.U * x(:, 1) + obj.W * zeros(size(obj.W, 2), 1) + obj.b; % h{0} = 0
-                    h{1} = obj.activation_function(a{1});
-
+                    h{1} = obj.activation_function(a{1}, false);
+                    
                     for t = 2 : tau
                         a{t} = obj.U * x(:, t) + obj.W * h{t - 1} + obj.b;
-                        h{t} = obj.activation_function(a{t});
+                        h{t} = obj.activation_function(a{t}, false);
                     end
-
+                    
                     o = obj.V * h{tau} + obj.c;
                     y_hat = RNN.softmax(o, true);
-                                        
+                    
+                    if sum(sum(isnan(y_hat)))
+                        error('softmax is returning NaN again');
+                    end
+                    
                     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
                     %%% output error
                     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -345,51 +356,60 @@ classdef RNN < handle
                     
                     % backprop through o
                     delta{tau} = obj.V' * delta_o .* RNN.softmax_prime(h{tau});
-                        
+                    
                     % for each t = tau - 1, ... , 1 compute  δ^l = (w^{l+1}' * δ^{l+1}) ⊙ σ′(z^l)
                     % a{t} = obj.U * x + obj.W * h{t} + obj.b;
-
-                    for t = tau - 1 : -1 : 1
+                    
+                    for t = tau - 1 : -1 : tau - min(obj.max_backprop_depth, tau) + 1 % max
                         delta{t} = ((obj.W' * delta{t+1}) + obj.U * x(:, t)) .* obj.activation_function_prime(a{t});
                     end
                     
-
+                    
                     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
                     %%% update weights and biases
                     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
                     
+                    
                     % Delta_V, weights from hidden layer to output
+                    regV_prime = obj.regularization_function_prime(obj.regularization_factor, obj.V);
                     Delta_V = eta * y_hat * delta{tau}'; % this assumes softmax
-                    obj.V = obj.V - Delta_V;
-
+                    obj.V = obj.V - Delta_V - regV_prime;
+                    
                     % Delta_c, biases for output layer
                     Delta_c = eta * delta_o;
                     obj.c = obj.c - Delta_c;
-
+                    
                     % Delta_W, weights from hidden layer to hidden layer (through time)
                     % α( sum(δyj(t)y_l(t−1)))
+                    regW_prime = obj.regularization_function_prime(obj.regularization_factor, obj.W);
                     Delta_W = 0;
-                    for t = 2 : tau
-                        Delta_W = Delta_W + eta * delta{t} * h{t - 1}';
+                    for t = max(2, (tau - obj.max_backprop_depth + 1)) : tau
+                        Delta_W = Delta_W + eta * delta{t} * a{t - 1}';
                     end
-                    obj.W = obj.W - Delta_W;
-
+                    Delta_W = min(Delta_W, obj.max_clip); % clip extrema
+                    Delta_W = max(Delta_W, -obj.max_clip);
+                    obj.W = obj.W - Delta_W / obj.max_backprop_depth - regW_prime;
+                    
                     % Delta_U, weights from input to hidden layer
                     % α(sum ((T)δyj(t)xi(t)))
+                    regU_prime = obj.regularization_function_prime(obj.regularization_factor, obj.U);
                     Delta_U = 0;
-                    for t = 1 : tau
+                    for t = max(1, (tau - obj.max_backprop_depth + 1)) : tau
                         Delta_U = Delta_U + eta * delta{t} * x(:, t)';
                     end
-                    obj.U = obj.U - Delta_U;
-
+                    Delta_U = min(Delta_U, obj.max_clip); % clip extrema
+                    Delta_U = max(Delta_U, -obj.max_clip);
+                    obj.U = obj.U - Delta_U / obj.max_backprop_depth - regU_prime;
+                    
                     % Delta_b, biases for hidden layer
                     % scale * sum(delta{l}, 2);
                     Delta_b = 0;
-                    for t = 1 : tau
+                    for t = max(1, (tau - obj.max_backprop_depth + 1)) : tau
                         Delta_b = Delta_b + eta * delta{t};
                     end
-                    obj.b = obj.b - Delta_b;
-                    
+                    Delta_b = min(Delta_b, obj.max_clip); % clip extrema
+                    Delta_b = max(Delta_b, -obj.max_clip);
+                    obj.b = obj.b - Delta_b / obj.max_backprop_depth;
                     mb_offset = mb_offset + batchSize;
                 end
                 
@@ -399,12 +419,14 @@ classdef RNN < handle
                 
                 % correct measures the number of matching columns between the given
                 %   targets and the (rounded) outputs of the NN
+                
+                reg = obj.regularization_function(obj.regularization_factor, obj.W);
                 training_results = zeros(langs, size(training_input, 2));
                 for i = 1 : size(training_input, 2)
                     training_results(:, i) = obj.feedforward(training_input(i));
                 end
                 training_size = size(training_results, 2);
-                training_cost = obj.cost_function(training_output, training_results);
+                training_cost = obj.cost_function(training_output, training_results) + reg;
                 training_correct = sum(all(training_output == round(training_results), 1));
                 training_acc = training_correct / training_size;
                 
@@ -425,6 +447,7 @@ classdef RNN < handle
                 validation_cost = obj.cost_function(validation_output, validation_results);
                 validation_correct = sum(all(validation_output == round(validation_results), 1));
                 validation_acc = validation_correct / validation_size;
+                
                 
                 % store and output results
                 obj.training_stats = [obj.training_stats ; training_acc training_cost test_acc test_cost validation_acc validation_cost];
